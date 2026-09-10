@@ -1,0 +1,7 @@
+config.json
+data.json
+data.txt
+*.log
+nssm.exe
+usage_cache.json
+uc_*.json
