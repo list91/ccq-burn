@@ -106,6 +106,10 @@ try {
         $zip = Join-Path $env:TEMP 'nssm-2.24.zip'
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest 'https://nssm.cc/release/nssm-2.24.zip' -OutFile $zip -UseBasicParsing
+        # this binary ends up running as SYSTEM: refuse anything but the known release
+        if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne '727D1E42275C605E0F04ABA98095C38A8E1E46DEF453CDFFCE42869428AA6743') {
+            Remove-Item $zip -Force; throw 'nssm-2.24.zip checksum mismatch - download it yourself and pass -NssmPath'
+        }
         $x = Join-Path $env:TEMP 'nssm-2.24-x'
         Expand-Archive $zip $x -Force
         Copy-Item (Join-Path $x 'nssm-2.24\win64\nssm.exe') $nssm -Force
