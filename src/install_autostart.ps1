@@ -3,7 +3,7 @@
 # starts and restarts a service, and the task is created with the highest
 # privileges so it can do that without a prompt every two minutes.
 #
-# Run: right-click -> Run as administrator, or via install_autostart.bat
+# Called by install.ps1 (elevated) with -User DOMAIN\name of the installing user.
 param([string]$User = "$env:USERDOMAIN\$env:USERNAME")
 $ErrorActionPreference = 'Stop'
 $Name = 'CCWidgetWatchdog'

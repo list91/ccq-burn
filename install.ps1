@@ -1,8 +1,8 @@
 #requires -version 5
 # ccq-burn installer. Run from the repo folder:
 #   powershell -ExecutionPolicy Bypass -File .\install.ps1
-# The first half runs as you (checks, shortcuts); it then relaunches itself
-# elevated once for the parts that need admin (service, scheduled task, ACL).
+# Runs as you for the checks, relaunches itself elevated once for the parts
+# that need admin (files, service, scheduled task, ACL), then creates your shortcuts.
 param(
     [switch]$Elevated,
     [string]$TargetUser,
@@ -22,38 +22,44 @@ function Die($m)  { Write-Host "`nERROR: $m" -ForegroundColor Red; if ($Elevated
 
 if (-not $Elevated) {
     Step 'Checking prerequisites'
-    if ([Environment]::OSVersion.Platform -ne 'Win32NT') { Die 'Windows only.' }
     $node = Get-Command node -ErrorAction SilentlyContinue
     if (-not $node) { Die 'Node.js not found. Install Node.js 18+ from https://nodejs.org and re-run.' }
-    $ver = [version]((& $node.Source -v).TrimStart('v'))
+    # the real binary, not a version-manager shim: the service runs as LocalSystem
+    # with none of your environment, forever
+    $nodeExe = (& $node.Source -p 'process.execPath').Trim()
+    $ver = [version]((& $nodeExe -v).TrimStart('v'))
     if ($ver.Major -lt 18) { Die "Node.js $ver is too old, need 18+." }
-    Say "Node.js $ver  ($($node.Source))"
+    if ($nodeExe -match 'fnm_multishells|\\volta\\|\\Temp\\') {
+        Die "Node at $nodeExe is a temporary/shim path (fnm/Volta). Install Node.js from https://nodejs.org (system-wide) and re-run."
+    }
+    Say "Node.js $ver  ($nodeExe)"
     $cred = Join-Path $env:USERPROFILE '.claude\.credentials.json'
     if (-not (Test-Path $cred)) { Die "No $cred. Install Claude Code and log in (run 'claude' once) with your Pro/Max account, then re-run." }
     Say 'Claude Code login found'
 
+    Step 'Asking for admin rights (service + scheduled task) - accept the UAC prompt'
+    $argv = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Elevated',
+              '-TargetUser', "`"$env:USERDOMAIN\$env:USERNAME`"", '-TargetProfile', "`"$env:USERPROFILE`"", '-NodePath', "`"$nodeExe`"")
+    if ($NssmPath) { $argv += @('-NssmPath', "`"$NssmPath`"") }
+    try { $p = Start-Process powershell.exe -Verb RunAs -ArgumentList $argv -Wait -PassThru }
+    catch { Die 'Admin rights were not granted - nothing was installed. Re-run and accept the UAC prompt.' }
+    if ($p.ExitCode -ne 0) { Die 'Elevated part failed - see the window it opened. Nothing else was changed.' }
+
+    # shortcuts only after the files exist, so a cancelled install leaves nothing behind
     Step 'Creating shortcuts'
     $sh = New-Object -ComObject WScript.Shell
     $wscript = Join-Path $env:SystemRoot 'System32\wscript.exe'
-    $startup = [Environment]::GetFolderPath('Startup')
-    $lnk = $sh.CreateShortcut((Join-Path $startup 'CC Usage Widget.lnk'))
+    $lnk = $sh.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Startup')) 'CC Usage Widget.lnk'))
     $lnk.TargetPath = $wscript; $lnk.Arguments = "`"$Root\widget.vbs`""; $lnk.WorkingDirectory = $Root
     $lnk.Save()
-    # Start Menu shortcut carries the global hotkey Ctrl+Alt+W -> restart everything
-    $progs = [Environment]::GetFolderPath('Programs')
-    $lnk = $sh.CreateShortcut((Join-Path $progs 'CC Usage - restart strip.lnk'))
+    # the Start Menu shortcut carries the global hotkey Ctrl+Alt+W -> restart everything
+    $lnk = $sh.CreateShortcut((Join-Path ([Environment]::GetFolderPath('Programs')) 'CC Usage - restart strip.lnk'))
     $lnk.TargetPath = $wscript; $lnk.Arguments = "`"$Root\restart.vbs`""; $lnk.WorkingDirectory = $Root
     $lnk.Hotkey = 'CTRL+ALT+W'
     $lnk.Save()
-    Say 'Startup + Start Menu (Ctrl+Alt+W) shortcuts'
+    Say 'Startup + Start Menu (Ctrl+Alt+W)'
 
-    Step 'Asking for admin rights (service + scheduled task)'
-    $argv = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"", '-Elevated',
-              '-TargetUser', "`"$env:USERDOMAIN\$env:USERNAME`"", '-TargetProfile', "`"$env:USERPROFILE`"", '-NodePath', "`"$($node.Source)`"")
-    if ($NssmPath) { $argv += @('-NssmPath', "`"$NssmPath`"") }
-    $p = Start-Process powershell.exe -Verb RunAs -ArgumentList $argv -Wait -PassThru
-    if ($p.ExitCode -ne 0) { Die 'Elevated part failed - see the window it opened.' }
-    Write-Host "`nDone. The strip appears on the taskbar within a minute." -ForegroundColor Green
+    Write-Host "`nDone. The strip appears on the taskbar, left of the tray, within a minute." -ForegroundColor Green
     Write-Host 'Drag it anywhere; right-click for the menu; Ctrl+Alt+W restarts everything.'
     exit 0
 }
@@ -100,6 +106,9 @@ try {
     # The watchdog runs elevated from this folder, so users must not be able to
     # write here - otherwise any process of yours could swap a script and get admin.
     Step 'Locking the folder (admins/SYSTEM write, users read)'
+    # owner first: an owner can always rewrite the ACL, and C:\Tools may have been
+    # created by you earlier
+    & icacls $Root /setowner '*S-1-5-32-544' /T /C /Q | Out-Null
     & icacls $Root /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' /T /Q | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'icacls failed' }
 

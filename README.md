@@ -29,11 +29,13 @@ Colors: used/weekly turn **yellow** at 75% and **red** at 90%. **Gray** means th
 ## Requirements
 
 - Windows 10 / 11
-- [Node.js](https://nodejs.org) 18 or newer
+- [Node.js](https://nodejs.org) 18 or newer, installed system-wide (the official installer). Version managers like fnm/Volta/nvm point to per-user shim paths the service can't use
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) logged in with a **Pro or Max** subscription (run `claude` once so `%USERPROFILE%\.claude\.credentials.json` exists)
-- Admin rights once, for the installer
+- An account with **admin rights** (you'll get one UAC prompt: the installer creates a Windows service and a scheduled task)
 
 ## Install
+
+Open **PowerShell** (normal, not admin) and run:
 
 ```powershell
 git clone https://github.com/list91/ccq-burn.git
@@ -41,20 +43,34 @@ cd ccq-burn
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-Accept the UAC prompt. Within a minute the strip appears next to the tray. That's it — it starts with Windows from now on.
+No git? Download [the ZIP](https://github.com/list91/ccq-burn/archive/refs/heads/main.zip), unpack it, open PowerShell in the unpacked `ccq-burn-main` folder and run the last line.
+
+Accept the UAC prompt. If you decline it, nothing is installed. Within a minute the strip appears next to the tray. That's it — it starts with Windows from now on.
 
 - **Move it:** drag with the mouse (position is remembered)
-- **Menu:** right-click → Restart / Back to tray / Exit
+- **Menu:** right-click → `Перезапустить` (restart) / `Вернуть к трею` (back next to the tray) / `Выход (до конца сеанса)` (hide until next logon)
 - **Restart everything:** `Ctrl+Alt+W`
 - **Details:** hover the strip for a tooltip (forecast range, server age, next poll)
 
 No internet access to nssm.cc? Download [NSSM 2.24](https://nssm.cc/download) yourself and run `.\install.ps1 -NssmPath C:\path\to\nssm.exe`.
+
+## Update
+
+```powershell
+cd ccq-burn
+git pull            # or download the ZIP again
+powershell -ExecutionPolicy Bypass -File .\install.ps1
+```
+
+Re-running the installer replaces the code and keeps your `config.json`. Do the same after upgrading or moving Node.js — the service remembers the exact `node.exe` path.
 
 ## Uninstall
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File .\uninstall.ps1
 ```
+
+Removes the service, the scheduled task, `C:\Tools\cc-widget`, the shortcuts and `%LOCALAPPDATA%\cc-widget`. Your Claude Code login is untouched.
 
 ## How it works
 
@@ -86,6 +102,8 @@ Files live in `C:\Tools\cc-widget` (read-only for normal users, because the watc
 | `СТОП` | service log `C:\Tools\cc-widget\svc.log`; `Get-Service CCWidgetCollector` |
 | `СЛЕП` for long | tooltip shows the server error; `Ctrl+Alt+W` forces a fresh poll after a network outage |
 | wrong numbers | make sure you are logged in to Claude Code with the account you use |
+| `ПОЛОСКА-РАСХОДА-НЕ-РАБОТАЕТ.txt` on the desktop | the watchdog couldn't bring the strip back; the file says why. It is removed automatically once the strip works again |
+| `Node.js ... is a temporary/shim path` | install Node.js from nodejs.org, then re-run the installer |
 
 ## Tests
 

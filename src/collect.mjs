@@ -11,13 +11,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { UsageProbe, setCredPath } from './usage.mjs';
 
-const CFG_PATH = path.join(import.meta.dirname, 'config.json');
+// import.meta.dirname only exists from Node 20.11; this works on 18+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+
+const CFG_PATH = path.join(HERE, 'config.json');
 const DEF_CFG = {
   plan: 'max5x',
   claudeDir: path.join(os.homedir(), '.claude', 'projects'),
-  outDir: import.meta.dirname,
+  outDir: HERE,
   blockHours: 5,
   intervalSec: 60,
   weights: { input: 1, cacheWrite: 1.25, cacheRead: 0.1, output: 5 },
@@ -38,7 +42,7 @@ catch (e) {
   cfgError = 'config.json не прочитан (' + (e.code || e.message) + '), взяты ВСТРОЕННЫЕ значения: cacheRead=0.1, credPath отсутствует';
   console.error('[cc-widget] ' + cfgError);
 }
-cfg.outDir = cfg.outDir || import.meta.dirname;
+cfg.outDir = cfg.outDir || HERE;
 cfg.weights = { ...DEF_CFG.weights, ...(cfg.weights || {}) };
 cfg.modelWeights = { ...DEF_CFG.modelWeights, ...(cfg.modelWeights || {}) };
 
@@ -114,7 +118,7 @@ const floor10 = (t) => Math.floor(t / TEN_MIN) * TEN_MIN;
 const winEndOf = (start) => floor10(start) + BLOCK_MS;
 
 setCredPath(cfg.credPath);
-const probe = new UsageProbe(path.join(import.meta.dirname, 'usage_cache.json'));
+const probe = new UsageProbe(path.join(HERE, 'usage_cache.json'));
 
 // Incremental scan state: every JSONL is read once in full, then only its tail.
 // Claude Code appends ~27 MB/hour under heavy use, so a 5-second tick reads a few
