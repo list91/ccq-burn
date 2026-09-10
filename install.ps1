@@ -16,9 +16,11 @@ $Src     = Join-Path $PSScriptRoot 'src'
 $Service = 'CCWidgetCollector'
 $Task    = 'CCWidgetWatchdog'
 
-function Say($m)  { Write-Host "  $m" }
-function Step($m) { Write-Host "`n> $m" -ForegroundColor Cyan }
-function Die($m)  { Write-Host "`nERROR: $m" -ForegroundColor Red; if ($Elevated) { Read-Host 'Press Enter to close' }; exit 1 }
+$Log     = Join-Path $env:TEMP 'ccq-burn-install.log'
+function Say($m)  { Write-Host "  $m"; Add-Content $Log "  $m" -ErrorAction SilentlyContinue }
+function Step($m) { Write-Host "`n> $m" -ForegroundColor Cyan; Add-Content $Log "> $m" -ErrorAction SilentlyContinue }
+function Die($m)  { Write-Host "`nERROR: $m" -ForegroundColor Red; Add-Content $Log "ERROR: $m" -ErrorAction SilentlyContinue
+                    if ($Elevated) { Read-Host 'Press Enter to close' }; exit 1 }
 
 if (-not $Elevated) {
     Step 'Checking prerequisites'
@@ -79,14 +81,21 @@ try {
     # C:\Tools inherits Modify from C:\ for every signed-in user, so anyone could
     # rename it away and plant their own cc-widget folder that the elevated
     # watchdog and the SYSTEM service would then run. Pin the parent: admin-owned,
-    # and nobody may delete/rename C:\Tools itself (object-only ACE, children and
-    # whatever else you keep in C:\Tools are not affected).
+    # signed-in users may still add folders to C:\Tools and keep Modify on
+    # everything inside it, but lose DELETE on C:\Tools itself. (A Deny ACE would
+    # be simpler but breaks node: fs.lstat on the folder fails with EPERM.)
     $Parent = Split-Path $Root
     New-Item -ItemType Directory -Path $Parent -Force | Out-Null
     & icacls $Parent /setowner '*S-1-5-32-544' /C /Q | Out-Null
-    & icacls $Parent /deny '*S-1-5-11:(D)' /C /Q | Out-Null
+    & icacls $Parent /remove:d '*S-1-5-11' /C /Q | Out-Null
+    & icacls $Parent /inheritance:d /C /Q | Out-Null
+    & icacls $Parent /remove:g '*S-1-5-11' /C /Q | Out-Null
+    & icacls $Parent /grant '*S-1-5-11:(OI)(CI)(IO)M' '*S-1-5-11:(RX,WD,AD)' /C /Q | Out-Null
     if ($LASTEXITCODE -ne 0) { throw "icacls failed on $Parent" }
     New-Item -ItemType Directory -Path $Root -Force | Out-Null
+    # a re-install must be able to overwrite files whatever ACL they carry now
+    & icacls $Root /setowner '*S-1-5-32-544' /T /C /Q | Out-Null
+    & icacls "$Root\*" /reset /T /C /Q | Out-Null
     Get-ChildItem $Src -File | Where-Object Name -ne 'config.example.json' |
         Copy-Item -Destination $Root -Force
     $cfgPath = Join-Path $Root 'config.json'
@@ -123,12 +132,20 @@ try {
     # owner first: an owner can always rewrite the ACL, and C:\Tools may have been
     # created by you earlier
     & icacls $Root /setowner '*S-1-5-32-544' /T /C /Q | Out-Null
-    & icacls $Root /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' /T /Q | Out-Null
+    # the folder gets explicit inheritable ACEs; everything inside just inherits them
+    # (applying (OI)(CI) to files with /T leaves them with an empty DACL)
+    & icacls $Root /inheritance:r /grant:r '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-545:(OI)(CI)RX' /Q | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'icacls failed' }
+    & icacls "$Root\*" /reset /T /C /Q | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'icacls reset failed' }
 
     Step "Installing service $Service (runs as LocalSystem)"
+    # right after an uninstall the old service can still be 'marked for deletion'
+    for ($i = 0; $i -lt 30 -and (Test-Path "HKLM:\SYSTEM\CurrentControlSet\Services\$Service") -and
+                 -not (Get-Service $Service -ErrorAction SilentlyContinue); $i++) { Start-Sleep 1 }
     if (-not (Get-Service $Service -ErrorAction SilentlyContinue)) {
         & $nssm install $Service $node "`"$Root\collect.mjs`"" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "nssm install failed with exit code $LASTEXITCODE" }
     } else {
         & $nssm set $Service Application $node | Out-Null
         & $nssm set $Service AppParameters "`"$Root\collect.mjs`"" | Out-Null

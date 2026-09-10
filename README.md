@@ -87,7 +87,7 @@ Anthropic usage endpoint (every ~5 min) ───────┘                
 - **Watchdog** (`watchdog.ps1`, task `CCWidgetWatchdog`): restarts whatever died, survives sleep, network loss and window resets.
 - Network failures back off (1–5 min), server throttling backs off up to 30 min — it never hammers the endpoint.
 
-Files live in `C:\Tools\cc-widget` (read-only for normal users, because the watchdog runs elevated; for the same reason `C:\Tools` itself is made admin-owned and can't be renamed or deleted) and `%LOCALAPPDATA%\cc-widget` (position, logs).
+Files live in `C:\Tools\cc-widget` (read-only for normal users, because the watchdog runs elevated; for the same reason `C:\Tools` itself is made admin-owned and can't be renamed or deleted, while you can still add and edit folders inside it) and `%LOCALAPPDATA%\cc-widget` (position, logs).
 
 ## Privacy
 
