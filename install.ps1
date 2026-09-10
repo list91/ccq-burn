@@ -43,7 +43,7 @@ if (-not $Elevated) {
     if ($NssmPath) { $argv += @('-NssmPath', "`"$NssmPath`"") }
     try { $p = Start-Process powershell.exe -Verb RunAs -ArgumentList $argv -Wait -PassThru }
     catch { Die 'Admin rights were not granted - nothing was installed. Re-run and accept the UAC prompt.' }
-    if ($p.ExitCode -ne 0) { Die 'Elevated part failed - see the window it opened. Nothing else was changed.' }
+    if ($p.ExitCode -ne 0) { Die 'Elevated part failed - see the window it opened. Fix the cause and re-run install.ps1 (or run uninstall.ps1).' }
 
     # shortcuts only after the files exist, so a cancelled install leaves nothing behind
     Step 'Creating shortcuts'
@@ -72,10 +72,20 @@ try {
     Stop-ScheduledTask -TaskName $Task -ErrorAction SilentlyContinue
     if (Get-Service $Service -ErrorAction SilentlyContinue) { Stop-Service $Service -Force -ErrorAction SilentlyContinue }
     Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" |
-        Where-Object { $_.CommandLine -like '*cc-widget\widget.ps1*' } |
+        Where-Object { $_.CommandLine -like '*cc-widget\widget.ps1*' -or $_.CommandLine -like '*cc-widget\watchdog.ps1*' } |
         ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 
     Step "Copying files to $Root"
+    # C:\Tools inherits Modify from C:\ for every signed-in user, so anyone could
+    # rename it away and plant their own cc-widget folder that the elevated
+    # watchdog and the SYSTEM service would then run. Pin the parent: admin-owned,
+    # and nobody may delete/rename C:\Tools itself (object-only ACE, children and
+    # whatever else you keep in C:\Tools are not affected).
+    $Parent = Split-Path $Root
+    New-Item -ItemType Directory -Path $Parent -Force | Out-Null
+    & icacls $Parent /setowner '*S-1-5-32-544' /C /Q | Out-Null
+    & icacls $Parent /deny '*S-1-5-11:(D)' /C /Q | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "icacls failed on $Parent" }
     New-Item -ItemType Directory -Path $Root -Force | Out-Null
     Get-ChildItem $Src -File | Where-Object Name -ne 'config.example.json' |
         Copy-Item -Destination $Root -Force

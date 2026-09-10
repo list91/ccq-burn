@@ -29,7 +29,7 @@ Colors: used/weekly turn **yellow** at 75% and **red** at 90%. **Gray** means th
 ## Requirements
 
 - Windows 10 / 11
-- [Node.js](https://nodejs.org) 18 or newer, installed system-wide (the official installer). Version managers like fnm/Volta/nvm point to per-user shim paths the service can't use
+- [Node.js](https://nodejs.org) 18 or newer, installed system-wide (the official installer). fnm/Volta put node on per-user temporary shim paths the service can't use — the installer refuses them
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) logged in with a **Pro or Max** subscription (run `claude` once so `%USERPROFILE%\.claude\.credentials.json` exists)
 - An account with **admin rights** (you'll get one UAC prompt: the installer creates a Windows service and a scheduled task)
 
@@ -43,7 +43,7 @@ cd ccq-burn
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
-No git? Download [the ZIP](https://github.com/list91/ccq-burn/archive/refs/heads/main.zip), unpack it, open PowerShell in the unpacked `ccq-burn-main` folder and run the last line.
+No git? Download [the ZIP](https://github.com/list91/ccq-burn/archive/refs/heads/main.zip) and unpack it. Open the unpacked `ccq-burn-main` folder in Explorer, type `powershell` in the address bar, press Enter, and run the last line.
 
 Accept the UAC prompt. If you decline it, nothing is installed. Within a minute the strip appears next to the tray. That's it — it starts with Windows from now on.
 
@@ -56,9 +56,10 @@ No internet access to nssm.cc? Download [NSSM 2.24](https://nssm.cc/download) yo
 
 ## Update
 
+In PowerShell, inside the folder you installed from (`ccq-burn`, or `ccq-burn-main` for the ZIP):
+
 ```powershell
-cd ccq-burn
-git pull            # or download the ZIP again
+git pull            # ZIP users: download and unpack the ZIP again instead
 powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
@@ -86,7 +87,7 @@ Anthropic usage endpoint (every ~5 min) ───────┘                
 - **Watchdog** (`watchdog.ps1`, task `CCWidgetWatchdog`): restarts whatever died, survives sleep, network loss and window resets.
 - Network failures back off (1–5 min), server throttling backs off up to 30 min — it never hammers the endpoint.
 
-Files live in `C:\Tools\cc-widget` (read-only for normal users, because the watchdog runs elevated) and `%LOCALAPPDATA%\cc-widget` (position, logs).
+Files live in `C:\Tools\cc-widget` (read-only for normal users, because the watchdog runs elevated; for the same reason `C:\Tools` itself is made admin-owned and can't be renamed or deleted) and `%LOCALAPPDATA%\cc-widget` (position, logs).
 
 ## Privacy
 
