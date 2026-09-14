@@ -216,6 +216,9 @@ $Palette = @{
       </Grid>
       <TextBlock x:Name="TxtWeek" FontFamily="Consolas" FontSize="13"
                  VerticalAlignment="Center"/>
+      <!-- workday pace vs the weekly quota: hidden outright on weekends -->
+      <TextBlock x:Name="TxtPace" FontFamily="Consolas" FontSize="12" Margin="4,0,0,0"
+                 VerticalAlignment="Center"/>
     </StackPanel>
   </Border>
 </Window>
@@ -228,6 +231,7 @@ $tNow  = $win.FindName('TxtNow')
 $tPct  = $win.FindName('TxtPct')
 $tRate = $win.FindName('TxtRate')
 $tWeek = $win.FindName('TxtWeek')
+$tPace = $win.FindName('TxtPace')
 $tLeft = $win.FindName('TxtLeft')
 $b5Proj = $win.FindName('Bar5Proj'); $b5Fact = $win.FindName('Bar5Fact')
 $bWkFact = $win.FindName('BarWkFact')
@@ -320,6 +324,7 @@ function Update-Ui {
         Set-Bar $b5Proj 110 $null $null; Set-Bar $b5Fact 110 $null $null; Set-Bar $bWkFact 70 $null $null
         Set-Slot $tRate (Format-SlotS $null)     S $Palette.hot $null
         Set-Slot $tWeek (Format-SlotD $null)     D $Palette.hot $null
+        $tPace.Visibility = 'Collapsed'
         Set-Slot $tLeft (Format-SlotE $null)     E $Palette.hot $null
         $script:Blink = $true
         $win.Opacity = if ((Get-Date) -lt $script:DimUntil) { 0.35 } else { 1.0 }
@@ -467,6 +472,26 @@ function Update-Ui {
              elseif ($wk -ge 75) { $Palette.warn } elseif ($wkAge -gt 60) { $Palette.dim } else { $Palette.bar }
     Set-Bar $bWkFact 70 $wk $wkHex
 
+    # --- pace: is today's weekly % ahead of an even 20%/workday march to 100%
+    # by Friday? Sat/Sun have no such target, so the arrow just disappears -
+    # a stale Friday reading is worse than nothing on a day with no quota math.
+    # [int]DayOfWeek is culture-invariant (Sunday=0..Saturday=6) even under the
+    # SYSTEM account's locale, unlike DayOfWeek.ToString() further down.
+    $dow = [int](Get-Date).DayOfWeek
+    $paceThreshold = if ($dow -ge 1 -and $dow -le 5) { $dow * 20 } else { $null }
+    $paceDelta = if ($null -eq $wk -or $null -eq $paceThreshold) { $null } else { $wk - $paceThreshold }
+    $paceTxt = Format-PaceArrow $paceDelta
+    if ($null -eq $paceTxt) {
+        $tPace.Visibility = 'Collapsed'
+    } else {
+        $tPace.Visibility = 'Visible'
+        $tPace.Text = $paceTxt
+        $tPace.Foreground = New-Brush $(
+            if ($paceDelta -gt 0) { $Palette.hot }
+            elseif ($paceDelta -lt 0) { $Palette.ok }
+            else { $Palette.dim })
+    }
+
     # --- slot E: time left in the window ------------------------------------
     # A duration, not a wall clock: "1:12 left" needs no arithmetic.
     # «no window yet» is a normal state, not a fault: it must not be red.
@@ -523,6 +548,14 @@ function Update-Ui {
     $tip += "Расход: $(Format-Tokens $blk.costPerHour)/ч`n"
     if ($d.logsUnavailable) { $tip += "ЛОГИ НЕДОСТУПНЫ — расход не считается`n" }
     if ($null -ne $wkAge -and $wkAge -lt 99999) { $tip += "Ответ сервера: $wkAge мин назад`n" }
+    if ($null -ne $paceThreshold -and $null -ne $paceDelta) {
+        # hardcoded, not DayOfWeek.ToString(): that reads the SYSTEM account's
+        # locale under the service, which need not be Russian
+        $dowName = @('вс','пн','вт','ср','чт','пт','сб')[$dow]
+        $tip += if ($paceDelta -gt 0) { "Темп: обгоняем план $dowName ($paceThreshold%) на $paceDelta пп`n" }
+                elseif ($paceDelta -lt 0) { "Темп: идём ровно, план $dowName ($paceThreshold%) ещё не превышен`n" }
+                else { "Темп: точно по плану $dowName ($paceThreshold%)`n" }
+    }
     if ($script:Covered) { $tip += "Полоску перекрывает чужое окно — возвращаю наверх`n" }
     $tip += "Данные коллектора: $dataAge с назад"
     $win.ToolTip = $tip

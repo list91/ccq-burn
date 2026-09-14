@@ -49,6 +49,15 @@ foreach ($v in 0, 0.4, 2.35, 9.9, 10, 18.3, 99, 100, 999, 1000, -3, $null, 'му
 Write-Output '--- D ---'
 foreach ($wp in 0, 52, 100, 999, 1500, $null, 89.6) { Check D (Format-SlotD $wp) "week=$wp" }
 
+Write-Output '--- PaceArrow: не часть сетки, только длина <=3 или null ---'
+foreach ($d in 0, 1, 12, 99, 150, -1, -12, -99, -150, $null) {
+    $t = Format-PaceArrow $d
+    $len = if ($null -eq $t) { 0 } else { "$t".Length }
+    $ok = ($null -eq $t) -or ($len -le 3)
+    if (-not $ok) { $script:bad++ }
+    Write-Output ('{0} PaceArrow |{1}| delta={2}' -f $(if ($ok) { 'ok  ' } else { 'ПЛОХО' }), $t, $d)
+}
+
 Write-Output '--- E ---'
 foreach ($m in 0, 5, 76, 300, 599, 600, 1440, -7, $null) { Check E (Format-SlotE $m) "left=$m" }
 

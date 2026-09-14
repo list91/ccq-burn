@@ -121,6 +121,20 @@ function Format-SlotD($weekPct) {
     Fit D ('{0,3}%' -f $w)
 }
 
+# Weekday pace: is today's weekly % ahead of or behind an even 20%-per-workday
+# march to 100% by Friday? This is not part of the fixed grid above - the strip
+# collapses it entirely on weekends (see widget.ps1), so it must not fight the
+# Fit padding that keeps the six grid slots from jittering.
+function Format-PaceArrow($delta) {
+    $d = ConvertTo-IntOrNull $delta
+    if ($null -eq $d) { return $null }
+    if ($d -gt 99) { $d = 99 }
+    if ($d -lt -99) { $d = -99 }
+    if ($d -eq 0) { return '●' }
+    if ($d -gt 0) { return "▲$d" }
+    return "▼$(-$d)"
+}
+
 function Format-SlotE($remainingMin) {
     $m = ConvertTo-IntOrNull $remainingMin
     if ($null -eq $m) { return (Fit E '--') }
